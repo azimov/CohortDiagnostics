@@ -1,39 +1,4 @@
-library(magrittr)
-# Set up
-baseUrl <- "http://api.ohdsi.org:8080/WebAPI"
-cohortIds <- c(1776966)
-
-# compile them into a data table
-studyCohorts <- list()
-for (i in (1:length(cohortIds))) {
-        cohortDefinition <-
-                ROhdsiWebApi::getCohortDefinition(cohortId = cohortIds[[i]], baseUrl = baseUrl)
-        df <- tidyr::tibble(
-                id = cohortDefinition$id,
-                createdDate = cohortDefinition$createdDate,
-                name = stringr::str_trim(stringr::str_squish(cohortDefinition$name)),
-                expression = cohortDefinition$expression %>% 
-                        RJSONIO::toJSON(digits = 23)
-        )
-        studyCohorts[[i]] <- df
-}
-studyCohorts <- dplyr::bind_rows(studyCohorts)
-
-cohortDefinitionsArray <- list()
-for (i in (1:nrow(studyCohorts))) {
-        cohortDefinition <- studyCohorts[i,]
-        cohortDefinitionsArray[[i]] <- list(id = cohortDefinition$id,
-                                            name = cohortDefinition$name,
-                                            createdDate = cohortDefinition$createdDate,
-                                            expression = cohortDefinition$expression %>% 
-                                                    RJSONIO::fromJSON(digits = 23))
-}
-
-cohortDefinitionsArray <- cohortDefinitionsArray %>% 
-        rjson::toJSON()
-
-
-
+# Hydrate skeleton with example specifications --------------------------------- 
 id <- 1
 version <- "v0.1.0"
 name <- "Study of some cohorts of interest"
@@ -46,28 +11,43 @@ modifiedDate <- NA
 skeletonType <- "CohortDiagnosticsStudy"
 organizationName <- "OHDSI"
 description <- "Cohort diagnostics on selected set of cohorts."
-cohortDefinitions <- cohortDefinitionsArray
 
 
 
-# Hydrate skeleton with example specifications --------------------------------- 
-specifications <- dplyr::tibble(id = id,
-                                version = version,
-                                name = name,
-                                packageName = packageName,
-                                skeletonVersin = skeletonVersion,
-                                createdBy = createdBy,
-                                createdDate = createdDate,
-                                modifiedBy = modifiedBy,
-                                modifiedDate = modifiedDate,
-                                skeletontype = skeletonType,
-                                organizationName = organizationName,
-                                description = description,
-                                cohortDefinitions = cohortDefinitions) %>% 
-        rjson::toJSON()
+library(magrittr)
+# Set up
+baseUrl <- "http://api.ohdsi.org:8080/WebAPI"
+cohortIds <- c(1776966)
+
+# compile them into a data table
+cohortDefinitionsArray <- list()
+for (i in (1:length(cohortIds))) {
+        cohortDefinition <-
+                ROhdsiWebApi::getCohortDefinition(cohortId = cohortIds[[i]], baseUrl = baseUrl)
+        cohortDefinitionsArray[[i]] <- list(
+                id = cohortDefinition$id,
+                createdDate = cohortDefinition$createdDate,
+                name = stringr::str_trim(stringr::str_squish(cohortDefinition$name)),
+                expression = cohortDefinition$expression
+        )
+}
+
+specifications <- list(id = id,
+                       version = version,
+                       name = name,
+                       packageName = packageName,
+                       skeletonVersin = skeletonVersion,
+                       createdBy = createdBy,
+                       createdDate = createdDate,
+                       modifiedBy = modifiedBy,
+                       modifiedDate = modifiedDate,
+                       skeletontype = skeletonType,
+                       organizationName = organizationName,
+                       description = description,
+                       cohortDefinitions = cohortDefinitionsArray)
 
 jsonFileName <- paste0(tempfile(), ".json")
-write(x = specifications, file = jsonFileName)
+write(x = specifications %>% rjson::toJSON(), file = jsonFileName)
 hydraSpecificationFromFile <- Hydra::loadSpecifications(fileName = jsonFileName)
 unlink(x = jsonFileName, force = TRUE)
 
