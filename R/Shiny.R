@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -31,11 +31,6 @@
 #'                         Note: copying to clipboard will not work in a Shiny window.
 #' @param aboutText        Text (using HTML markup) that will be displayed in an About tab in the Shiny app.
 #'                         If not provided, no About tab will be shown.
-#' @param cohortBaseUrl    The base URL for constructing linkouts to an ATLAS instance, using the 
-#'                         webApiCohortId in the cohortsToCreate file. If NULL, no linkouts will be 
-#'                         created.
-#' @param conceptBaseUrl   The base URL for constructing linkouts to an Athena instance, using the
-#'                         concept ID.
 #'
 #' @details
 #' Launches a Shiny app that allows the user to explore the diagnostics
@@ -47,8 +42,6 @@ launchDiagnosticsExplorer <- function(dataFolder = "data",
                                       resultsDatabaseSchema = NULL,
                                       vocabularyDatabaseSchema = resultsDatabaseSchema,
                                       aboutText = NULL,
-                                      cohortBaseUrl = "https://atlas.ohdsi.org/#/cohortdefinition/",
-                                      conceptBaseUrl = "https://athena.ohdsi.org/search-terms/terms/",
                                       runOverNetwork = FALSE,
                                       port = 80,
                                       launch.browser = FALSE) {
@@ -64,9 +57,13 @@ launchDiagnosticsExplorer <- function(dataFolder = "data",
   ensure_installed("pool")
   ensure_installed("dplyr")
   ensure_installed("tidyr")
+  ensure_installed("ggplot2")
+  ensure_installed("gtable")
+  ensure_installed("checkmate")
   ensure_installed("ggiraph")
   ensure_installed("stringr")
-  ensure_installed("purrr")
+  ensure_installed("SqlRender")
+  ensure_installed("DatabaseConnector")
 
   appDir <- system.file("shiny", "DiagnosticsExplorer", package = "CohortDiagnostics")  
   
@@ -86,9 +83,7 @@ launchDiagnosticsExplorer <- function(dataFolder = "data",
                         vocabularyDatabaseSchema = vocabularyDatabaseSchema,
                         dataFolder = dataFolder,
                         dataFile = dataFile,
-                        aboutText = aboutText,
-                        cohortBaseUrl = cohortBaseUrl,
-                        conceptBaseUrl = conceptBaseUrl)
+                        aboutText = aboutText)
   .GlobalEnv$shinySettings <- shinySettings
   on.exit(rm("shinySettings", envir = .GlobalEnv))
   shiny::runApp(appDir = appDir)

@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -191,12 +191,12 @@ runCohortDiagnostics <- function(packageName = NULL,
   }
   cohortTableColumnNamesObserved <- colnames(cohorts) %>% 
     sort()
-  cohortTableColumnNamesExpected <- CohortDiagnostics:::getResultsDataModelSpecifications() %>% 
+  cohortTableColumnNamesExpected <- getResultsDataModelSpecifications() %>% 
     dplyr::filter(.data$tableName == 'cohort') %>% 
     dplyr::pull(.data$fieldName) %>% 
     SqlRender::snakeCaseToCamelCase() %>% 
     sort()
-  cohortTableColumnNamesRequired <- CohortDiagnostics:::getResultsDataModelSpecifications() %>% 
+  cohortTableColumnNamesRequired <- getResultsDataModelSpecifications() %>% 
     dplyr::filter(.data$tableName == 'cohort') %>% 
     dplyr::filter(.data$isRequired == 'Yes') %>% 
     dplyr::pull(.data$fieldName) %>% 
@@ -311,7 +311,7 @@ runCohortDiagnostics <- function(packageName = NULL,
   #   referentConceptIdToInsert <- dplyr::bind_rows(referentConceptIdToInsert, phenotypeDescription %>% 
   #                                                   dplyr::transmute(conceptId = as.double(.data$phenotypeId/1000))) %>%
   #     dplyr::distinct()
-  # }
+  # }  # removed because phenotypeId/1000 is not always referentConceptId
   if ('referentConceptId' %in% colnames(cohorts)) {
     referentConceptIdToInsert <- dplyr::bind_rows(referentConceptIdToInsert, cohorts %>% 
                                                     dplyr::transmute(conceptId = as.double(.data$referentConceptId))) %>%
