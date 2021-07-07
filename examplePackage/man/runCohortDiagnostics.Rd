@@ -7,10 +7,13 @@
 runCohortDiagnostics(
   connectionDetails,
   cdmDatabaseSchema,
+  vocabularyDatabaseSchema = cdmDatabaseSchema,
+  packageName,
   cohortDatabaseSchema = cdmDatabaseSchema,
   cohortTable = "cohort",
   oracleTempSchema = cohortDatabaseSchema,
   outputFolder,
+  incrementalFolder = file.path(outputFolder, "incrementalFolder"),
   databaseId = "Unknown",
   databaseName = "Unknown",
   databaseDescription = "Unknown",
@@ -22,33 +25,46 @@ runCohortDiagnostics(
   runBreakdownIndexEvents = TRUE,
   runIncidenceRates = TRUE,
   runCohortOverlap = TRUE,
+  runVisitContext = TRUE,
+  cohortIds = NULL,
   runCohortCharacterization = TRUE,
+  runTemporalCohortCharacterization = TRUE,
   minCellCount = 5
 )
 }
 \arguments{
-\item{connectionDetails}{An object of type \code{connectionDetails} as created using the
-\code{\link[DatabaseConnector]{createConnectionDetails}} function in the
-DatabaseConnector package.}
+\item{connectionDetails}{An object of type \code{connectionDetails} as created
+using the
+\code{\link[DatabaseConnector]{createConnectionDetails}}
+function in the DatabaseConnector package.}
 
-\item{cdmDatabaseSchema}{Schema name where your patient-level data in OMOP CDM format resides.
-Note that for SQL Server, this should include both the database and
-schema name, for example 'cdm_data.dbo'.}
+\item{cdmDatabaseSchema}{Schema name where your patient-level data in OMOP CDM
+format resides. Note that for SQL Server, this should
+include both the database and schema name, for example
+'cdm_data.dbo'.}
 
-\item{cohortDatabaseSchema}{Schema name where intermediate data can be stored. You will need to have
-write priviliges in this schema. Note that for SQL Server, this should
-include both the database and schema name, for example 'cdm_data.dbo'.}
+\item{vocabularyDatabaseSchema}{Schema name where your OMOP vocabulary data resides. This is 
+commonly the same as cdmDatabaseSchema. Note that for 
+SQL Server, this should include both the database and
+schema name, for example 'vocabulary.dbo'.}
 
-\item{cohortTable}{The name of the table that will be created in the work database schema.
-This table will hold the exposure and outcome cohorts used in this
-study.}
+\item{packageName}{The package to look for study specifications}
 
-\item{oracleTempSchema}{Should be used in Oracle to specify a schema where the user has write
-priviliges for storing temporary tables.}
+\item{cohortDatabaseSchema}{Schema name where intermediate data can be stored. You
+will need to have write privileges in this schema. Note
+that for SQL Server, this should include both the
+database and schema name, for example 'cdm_data.dbo'.}
 
-\item{outputFolder}{Name of local folder to place results; make sure to use forward slashes
-(/). Do not use a folder on a network drive since this greatly impacts
-performance.}
+\item{cohortTable}{The name of the table that will be created in the work
+database schema. This table will hold the exposure and
+outcome cohorts used in this study.}
+
+\item{oracleTempSchema}{Should be used in Oracle to specify a schema where the
+user has write privileges for storing temporary tables.}
+
+\item{outputFolder}{Name of local folder to place results; make sure to use
+forward slashes (/). Do not use a folder on a network
+drive since this greatly impacts performance.}
 
 \item{databaseId}{A short string for identifying the database (e.g.
 'Synpuf').}
@@ -58,11 +74,14 @@ Synthetic Public Use Files (SynPUFs)').}
 
 \item{databaseDescription}{A short description (several sentences) of the database.}
 
-\item{createCohorts}{Create the cohortTable table with the exposure and outcome cohorts?}
+\item{createCohorts}{Create the cohortTable table with the exposure and
+outcome cohorts?}
 
-\item{runInclusionStatistics}{Generate and export statistic on the cohort incusion rules?}
+\item{runInclusionStatistics}{Generate and export statistic on the cohort inclusion
+rules?}
 
-\item{runIncludedSourceConcepts}{Generate and export the source concepts included in the cohorts?}
+\item{runIncludedSourceConcepts}{Generate and export the source concepts included in the
+cohorts?}
 
 \item{runOrphanConcepts}{Generate and export potential orphan concepts?}
 
@@ -74,10 +93,14 @@ Synthetic Public Use Files (SynPUFs)').}
 
 \item{runCohortOverlap}{Generate and export the cohort overlap?}
 
+\item{cohortIds}{Optionally, provide a subset of cohort IDs to restrict the diagnostics to.}
+
 \item{runCohortCharacterization}{Generate and export the cohort characterization?}
 
-\item{minCellCount}{The minimum number of subjects contributing to a count before it can be included 
-in packaged results.}
+\item{runTemporalCohortCharacterization}{Generate and export the temporal cohort characterization?}
+
+\item{minCellCount}{The minimum number of subjects contributing to a count
+before it can be included in packaged results.}
 }
 \description{
 Execute the cohort diagnostics

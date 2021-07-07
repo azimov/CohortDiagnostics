@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -42,16 +42,24 @@ checkCohortReference <- function(cohortReference, errorMessage = NULL) {
 
 makeBackwardsCompatible <- function(cohorts) {
   if (!"name" %in% colnames(cohorts)) {
-    cohorts <- cohorts %>%
-      mutate(name = .data$cohortId)
+    if ('cohortId' %in% colnames(cohorts)) {
+      cohorts <- cohorts %>%
+        dplyr::mutate(name = as.character(.data$cohortId))
+    } else if ('id' %in% colnames(cohorts)) {
+      cohorts <- cohorts %>%
+        dplyr::mutate(name = as.character(.data$id)) %>% 
+        dplyr::mutate(cohortId = .data$id)
+    }
   }
-  if (!"webApiCohortId" %in% colnames(cohorts) && "atlasId" %in% colnames(cohorts)) {
+  if (!"webApiCohortId" %in% colnames(cohorts) && 
+      "atlasId" %in% colnames(cohorts)) {
     cohorts <- cohorts %>%
-      rename(webApiCohortId = .data$atlasId)
+      dplyr::mutate(webApiCohortId = .data$atlasId)
   }
-  if (!"cohortName" %in% colnames(cohorts) && "atlasName" %in% colnames(cohorts)) {
+  if (!"cohortName" %in% colnames(cohorts) && 
+      "atlasName" %in% colnames(cohorts)) {
     cohorts <- cohorts %>%
-      rename(cohortName = .data$atlasName)
+      dplyr::mutate(cohortName = .data$atlasName)
   }
   return(cohorts)
 }
@@ -153,7 +161,15 @@ selectColumnAccordingToResultsModel <- function(data) {
   if ("logicDescription" %in% colnames(data)) {
     columsToInclude <- c(columsToInclude, "logicDescription")
   }
-  
+  if ("PMID" %in% colnames(data)) {
+    columsToInclude <- c(columsToInclude, "PMID")
+  }
+  if ("referentConceptId" %in% colnames(data)) {
+    columsToInclude <- c(columsToInclude, "referentConceptId")
+  }
+  if ("cohortType" %in% colnames(data)) {
+    columsToInclude <- c(columsToInclude, "cohortType")
+  }
   columsToInclude <- c(columsToInclude, "json" ,"sql", "webApiCohortId")
   return(data[, columsToInclude])
 }
@@ -284,6 +300,8 @@ createCohortTable <- function(connectionDetails = NULL,
 #' @template OracleTempSchema
 #'
 #' @template CdmDatabaseSchema
+#' 
+#' @template VocabularyDatabaseSchema
 #'
 #' @param cohortId                     The cohort ID used to reference the cohort in the cohort table.
 #' @param generateInclusionStats       Compute and store inclusion rule statistics?
@@ -312,6 +330,7 @@ instantiateCohort <- function(connectionDetails = NULL,
                               cohortId = NULL,
                               generateInclusionStats = FALSE,
                               resultsDatabaseSchema = cohortDatabaseSchema,
+                              vocabularyDatabaseSchema = cdmDatabaseSchema,
                               cohortInclusionTable = paste0(cohortTable, "_inclusion"),
                               cohortInclusionResultTable = paste0(cohortTable, "_inclusion_result"),
                               cohortInclusionStatsTable = paste0(cohortTable, "_inclusion_stats"),
@@ -360,7 +379,7 @@ instantiateCohort <- function(connectionDetails = NULL,
   if (generateInclusionStats) {
     sql <- SqlRender::render(sql,
                              cdm_database_schema = cdmDatabaseSchema,
-                             vocabulary_database_schema = cdmDatabaseSchema,
+                             vocabulary_database_schema = vocabularyDatabaseSchema,
                              target_database_schema = cohortDatabaseSchema,
                              target_cohort_table = cohortTable,
                              target_cohort_id = cohortId,
@@ -379,7 +398,7 @@ instantiateCohort <- function(connectionDetails = NULL,
   } else {
     sql <- SqlRender::render(sql,
                              cdm_database_schema = cdmDatabaseSchema,
-                             vocabulary_database_schema = cdmDatabaseSchema,
+                             vocabulary_database_schema = vocabularyDatabaseSchema,
                              target_database_schema = cohortDatabaseSchema,
                              target_cohort_table = cohortTable,
                              target_cohort_id = cohortId)
@@ -508,6 +527,8 @@ processInclusionStats <- function(inclusion,
 #'
 #' @template CdmDatabaseSchema
 #' 
+#' @template VocabularyDatabaseSchema
+#' 
 #' @template CohortSetSpecs
 #' 
 #' @template CohortSetReference
@@ -529,6 +550,7 @@ processInclusionStats <- function(inclusion,
 instantiateCohortSet <- function(connectionDetails = NULL,
                                  connection = NULL,
                                  cdmDatabaseSchema,
+                                 vocabularyDatabaseSchema = cdmDatabaseSchema,
                                  oracleTempSchema = NULL,
                                  cohortDatabaseSchema = cdmDatabaseSchema,
                                  cohortTable = "cohort",
@@ -607,7 +629,7 @@ instantiateCohortSet <- function(connectionDetails = NULL,
       if (generateInclusionStats) {
         sql <- SqlRender::render(sql,
                                  cdm_database_schema = cdmDatabaseSchema,
-                                 vocabulary_database_schema = cdmDatabaseSchema,
+                                 vocabulary_database_schema = vocabularyDatabaseSchema,
                                  target_database_schema = cohortDatabaseSchema,
                                  target_cohort_table = cohortTable,
                                  target_cohort_id = cohorts$cohortId[i],
@@ -618,7 +640,7 @@ instantiateCohortSet <- function(connectionDetails = NULL,
       } else {
         sql <- SqlRender::render(sql,
                                  cdm_database_schema = cdmDatabaseSchema,
-                                 vocabulary_database_schema = cdmDatabaseSchema,
+                                 vocabulary_database_schema = vocabularyDatabaseSchema,
                                  target_database_schema = cohortDatabaseSchema,
                                  target_cohort_table = cohortTable,
                                  target_cohort_id = cohorts$cohortId[i])
@@ -661,10 +683,14 @@ createTempInclusionStatsTables <- function(connection, oracleTempSchema, cohorts
       nrOfRules <- length(cohortDefinition$InclusionRules)
       if (nrOfRules > 0) {
         for (j in 1:nrOfRules) {
+          ruleName <- cohortDefinition$InclusionRules[[j]]$name
+          if (length(ruleName) == 0) {
+            ruleName <- paste0("Unamed rule (Sequence ", j - 1, ")")
+          }
           inclusionRules <- dplyr::bind_rows(inclusionRules, 
                                              tidyr::tibble(cohortId = cohorts$cohortId[i],
                                                            ruleSequence = j - 1,
-                                                           ruleName = cohortDefinition$InclusionRules[[j]]$name)) %>% 
+                                                           ruleName = !!ruleName)) %>% 
             dplyr::distinct()
         }
       }
@@ -678,8 +704,6 @@ createTempInclusionStatsTables <- function(connection, oracleTempSchema, cohorts
                     cohortDefinitionId = .data$cohortId) %>% 
       dplyr::select(.data$cohortDefinitionId, .data$ruleSequence, .data$name)
     
-    inclusionRules <- data.frame(inclusionRules) # temporary solution till DatabaseConnector supports tibble
-    
     DatabaseConnector::insertTable(connection = connection,
                                    tableName = "#cohort_inclusion",
                                    data = inclusionRules,
@@ -689,9 +713,9 @@ createTempInclusionStatsTables <- function(connection, oracleTempSchema, cohorts
                                    oracleTempSchema = oracleTempSchema,
                                    camelCaseToSnakeCase = TRUE)
   } else {
-    inclusionRules <- data.frame(cohortDefinitionId = as.double(),
-                                 ruleSequence = as.integer(),
-                                 name = as.character())
+    inclusionRules <- dplyr::tibble(cohortDefinitionId = as.double(),
+                                    ruleSequence = as.integer(),
+                                    name = as.character())
     DatabaseConnector::insertTable(connection = connection,
                                    tableName = "#cohort_inclusion",
                                    data = inclusionRules,

@@ -1,20 +1,23 @@
 Package: examplePackage
 Type: Package
-Title: A Package Skeleton for Cohort Diagnostics
+Title: A package that generates cohort diagnostics output.
 Version: 0.0.1
-Author: Martijn Schuemie [aut, cre]
-Maintainer: Martijn J. Schuemie <schuemie@ohdsi.org>
-Description: A skeleton package, to be used as a starting point when you just want to run cohort diagnostics.
+Author: Gowtham Rao [aut, cre]
+Maintainer: Gowtham Rao <rao@ohdsi.org>
+Description: A package that generates cohort diagnostics output.
 Depends:
     DatabaseConnector (>= 2.2.0)
 Imports:
-	CohortDiagnostics
+	CohortDiagnostics,
+	ParallelLogger
 Suggests:
     knitr,
     rmarkdown,
     ROhdsiWebApi,
-    OhdsiRTools
-License: Apache License 2.0
+    OhdsiRTools,
+License: Apache License (>= 2)
 VignetteBuilder: knitr
 LazyData: TRUE
 RoxygenNote: 7.1.1
+Encoding: UTF-8
+Language: en-US

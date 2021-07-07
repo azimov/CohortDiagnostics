@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -23,6 +23,9 @@ getVisitContext <- function(connectionDetails = NULL,
                             cohortIds,
                             conceptIdTable = NULL,
                             cdmVersion = 5) {
+  if (!cdmVersion == 5) {
+    warning('Only OMOP CDM v5.x.x is supported. Continuing execution.')
+  }
   
   start <- Sys.time()
   

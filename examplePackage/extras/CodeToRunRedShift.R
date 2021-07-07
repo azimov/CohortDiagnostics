@@ -1,83 +1,102 @@
-# Make sure to install all dependencies (not needed if already done):
-# install.packages("SqlRender")
-# install.packages("DatabaseConnector")
-# install.packages("ggplot2")
-# install.packages("ParallelLogger")
-# install.packages("readr")
-# install.packages("tibble")
-# install.packages("dplyr")
-# install.packages("RJSONIO")
-# install.packages("devtools")
-# devtools::install_github("FeatureExtraction")
-# devtools::install_github("ROhdsiWebApi")
-# devtools::install_github("CohortDiagnostics")
+source(Sys.getenv("startUpScriptLocation"))
 
-
-# Load the package
+library(CohortDiagnostics)
 library(examplePackage)
 
-path <- 'D:/yourStudyFolderRs'
-
-# Optional: specify where the temporary files will be created:
-options(andromedaTempFolder = file.path(path, "andromedaTemp"))
-
-# Maximum number of cores to be used:
-maxCores <- parallel::detectCores()
+packageName <- 'examplePackage'
+connectionSpecifications <- cdmSources %>%
+  dplyr::filter(sequence == 1) %>%
+  dplyr::filter(database == 'truven_ccae')
 
 
-# Details for connecting to the server:
-connectionDetails <- DatabaseConnector::createConnectionDetails(dbms = "redshift",
-                                                                server = Sys.getenv("REDSHIFT_MDCD_SERVER"),
-                                                                user = Sys.getenv("userSecureAWS"),
-                                                                password = Sys.getenv("passwordSecureAWS"),
-                                                                port = Sys.getenv("REDSHIFT_MDCD_PORT"))
+dbms <- connectionSpecifications$dbms
+port <- connectionSpecifications$port
+server <- connectionSpecifications$server
+cdmDatabaseSchema <- connectionSpecifications$cdmDatabaseSchema
+vocabDatabaseSchema <- connectionSpecifications$vocabDatabaseSchema
+databaseId <- connectionSpecifications$database
+cohortDatabaseSchema = 'scratch_grao9'
+userNameService = "OHDA_USER"
+passwordService = "OHDA_PASSWORD"
 
-# For Oracle: define a schema that can be used to emulate temp tables:
-oracleTempSchema <- NULL
+connectionDetails <- DatabaseConnector::createConnectionDetails(
+  dbms = dbms,
+  user = keyring::key_get(service = userNameService),
+  password = keyring::key_get(service = passwordService),
+  port = port,
+  server = server
+)
 
-# Details specific to the database:
-outputFolder <- file.path(path, "output")
-cdmDatabaseSchema <- Sys.getenv("REDSHIFT_MDCD_CDM")
-cohortDatabaseSchema <- Sys.getenv("REDSHIFT_MDCD_SCRATCH")
-cohortTable <- "yourCohortTable"
-databaseId <- "MDCD"
-databaseName <- "IBM Medicaid database"
-databaseDescription <- "IBM Medicaid database."
+cohortTable <- "cohort"
 
-# Use this to run the cohorttDiagnostics. The results will be stored in the diagnosticsExport subfolder of the outputFolder. This can be shared between sites.
-examplePackage::runCohortDiagnostics(connectionDetails = connectionDetails,
-                                     cdmDatabaseSchema = cdmDatabaseSchema,
-                                     cohortDatabaseSchema = cohortDatabaseSchema,
-                                     cohortTable = cohortTable,
-                                     oracleTempSchema = oracleTempSchema,
-                                     outputFolder = outputFolder,
-                                     databaseId = databaseId,
-                                     databaseName = databaseName,
-                                     databaseDescription = databaseDescription,
-                                     createCohorts = TRUE,
-                                     runInclusionStatistics = TRUE,
-                                     runIncludedSourceConcepts = TRUE,
-                                     runOrphanConcepts = TRUE,
-                                     runTimeDistributions = TRUE,
-                                     runBreakdownIndexEvents = TRUE,
-                                     runIncidenceRates = TRUE,
-                                     runCohortOverlap = TRUE,
-                                     runCohortCharacterization = TRUE,
-                                     runTemporalCohortCharacterization = TRUE,
-                                     minCellCount = 5)
+outputFolder <- file.path(rstudioapi::getActiveProject(), "outputFolder", databaseId)
+unlink(x = outputFolder,
+       recursive = TRUE,
+       force = TRUE)
+dir.create(path = outputFolder,
+           showWarnings = FALSE,
+           recursive = TRUE)
 
-# To view the results:
-# Optional: if there are results zip files from multiple sites in a folder, this merges them, which will speed up starting the viewer:
-CohortDiagnostics::preMergeDiagnosticsFiles(file.path(outputFolder, "diagnosticsExport"))
-
-# Use this to view the results. Multiple zip files can be in the same folder. If the files were pre-merged, this is automatically detected: 
-CohortDiagnostics::launchDiagnosticsExplorer(file.path(outputFolder, "diagnosticsExport"))
+dataSouceInformation <-
+  getDataSourceInformation(
+    connectionDetails = connectionDetails,
+    cdmDatabaseSchema = cdmDatabaseSchema,
+    vocabDatabaseSchema = vocabDatabaseSchema
+  )
 
 
-# To explore a specific cohort in the local database, viewing patient profiles:
-CohortDiagnostics::launchCohortExplorer(connectionDetails = connectionDetails,
-                                        cdmDatabaseSchema = cdmDatabaseSchema,
-                                        cohortDatabaseSchema = cohortDatabaseSchema,
-                                        cohortTable = cohortTable,
-                                        cohortId = 123)
-# Where 123 is the ID of the cohort you wish to inspect.
+examplePackage::runCohortDiagnostics(
+  packageName = packageName,
+  connectionDetails = connectionDetails,
+  cdmDatabaseSchema = cdmDatabaseSchema,
+  vocabularyDatabaseSchema = vocabDatabaseSchema,
+  cohortDatabaseSchema = cohortDatabaseSchema,
+  cohortTable = cohortTable,
+  outputFolder = outputFolder,
+  databaseId = database,
+  databaseName = dataSouceInformation$cdmSourceName,
+  databaseDescription = dataSouceInformation$sourceDescription,
+  runCohortCharacterization = TRUE,
+  runCohortOverlap = TRUE,
+  runOrphanConcepts = TRUE,
+  runVisitContext = TRUE,
+  runIncludedSourceConcepts = TRUE,
+  runTimeDistributions = TRUE,
+  runTemporalCohortCharacterization = TRUE,
+  runBreakdownIndexEvents = TRUE,
+  runInclusionStatistics = TRUE,
+  runIncidenceRates = TRUE,
+  createCohorts = TRUE,
+  minCellCount = 0
+)
+
+CohortDiagnostics::preMergeDiagnosticsFiles(dataFolder = outputFolder)
+
+CohortDiagnostics::launchDiagnosticsExplorer(dataFolder = outputFolder)
+
+
+
+# connectionDetailsToUpload <- createConnectionDetails(dbms = "postgresql",
+#                                              server = paste(Sys.getenv("shinydbServer"),
+#                                                             Sys.getenv("shinydbDatabase"),
+#                                                             sep = "/"),
+#                                              port = Sys.getenv("shinydbPort"),
+#                                              user = Sys.getenv("shinyDbUserGowtham"),
+#                                              password = Sys.getenv("shinyDbPasswordGowtham"))
+#
+#
+# resultsSchema <- "examplePackageCdTruven"
+# createResultsDataModel(connectionDetails = connectionDetailsToUpload, schema = resultsSchema)
+#
+#
+# path = outputFolder
+# zipFilesToUpload <- list.files(path = path,
+#                                pattern = ".zip",
+#                                recursive = TRUE,
+#                                full.names = TRUE)
+#
+# for (i in (1:length(zipFilesToUpload))) {
+#   uploadResults(connectionDetails = connectionDetailsToUpload,
+#                 schema = resultsSchema,
+#                 zipFileName = zipFilesToUpload[[i]])
+# }

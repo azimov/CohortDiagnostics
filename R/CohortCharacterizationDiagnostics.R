@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -48,7 +48,7 @@ getCohortCharacteristics <- function(connectionDetails = NULL,
                                                                      aggregated = TRUE)
     
     populationSize <- attr(x = featureExtractionOutput, which = "metaData")$populationSize
-    populationSize <- dplyr::tibble(cohortId = names(populationSize),
+    populationSize <- dplyr::tibble(cohortId = names(populationSize) %>% as.numeric(),
                                     populationSize = populationSize)
     
     if (!"analysisRef" %in% names(results)) {
@@ -72,9 +72,11 @@ getCohortCharacteristics <- function(connectionDetails = NULL,
       covariates <- featureExtractionOutput$covariates %>% 
         dplyr::rename(cohortId = .data$cohortDefinitionId) %>% 
         dplyr::left_join(populationSize, by = "cohortId", copy = TRUE) %>% 
-        dplyr::mutate(sd = sqrt(((populationSize * .data$sumValue) + .data$sumValue)/(populationSize^2))) %>% 
-        dplyr::rename(mean = .data$averageValue) %>% 
-        dplyr::select(-.data$sumValue, -.data$populationSize)
+        dplyr::mutate(p = .data$sumValue / .data$populationSize)  %>% 
+        dplyr::mutate(sd = sqrt(.data$p * (1 - .data$p))) %>%
+        dplyr::select(-.data$p) %>%
+        dplyr::rename(mean = .data$averageValue) %>%  
+        dplyr::select(-.data$sumValue, -.data$populationSize) 
       
       if (FeatureExtraction::isTemporalCovariateData(featureExtractionOutput)) {
         covariates <- covariates %>% 

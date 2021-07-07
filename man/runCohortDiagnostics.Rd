@@ -15,13 +15,14 @@ runCohortDiagnostics(
   cdmDatabaseSchema,
   oracleTempSchema = NULL,
   cohortDatabaseSchema,
+  vocabularyDatabaseSchema = cdmDatabaseSchema,
   cohortTable = "cohort",
   cohortIds = NULL,
   inclusionStatisticsFolder = file.path(exportFolder, "inclusionStatistics"),
   exportFolder,
   databaseId,
-  databaseName = NULL,
-  databaseDescription = NULL,
+  databaseName = databaseId,
+  databaseDescription = databaseId,
   cdmVersion = 5,
   runInclusionStatistics = TRUE,
   runIncludedSourceConcepts = TRUE,
@@ -95,6 +96,11 @@ privileges for storing temporary tables.}
 this should include both the database and schema name, for example
 'scratch.dbo'.}
 
+\item{vocabularyDatabaseSchema}{Schema name where your OMOP vocabulary data resides. This is 
+commonly the same as cdmDatabaseSchema. Note that for 
+SQL Server, this should include both the database and
+schema name, for example 'vocabulary.dbo'.}
+
 \item{cohortTable}{Name of the cohort table.}
 
 \item{cohortIds}{Optionally, provide a subset of cohort IDs to restrict the
@@ -108,9 +114,9 @@ does not exist it will be created.}
 
 \item{databaseId}{A short string for identifying the database (e.g. 'Synpuf').}
 
-\item{databaseName}{The full name of the database.}
+\item{databaseName}{The full name of the database. If NULL, defaults to databaseId.}
 
-\item{databaseDescription}{A short description (several sentences) of the database.}
+\item{databaseDescription}{A short description (several sentences) of the database. If NULL, defaults to databaseId.}
 
 \item{cdmVersion}{The version of the OMOP CDM. Default 5. (Note: only 5 is supported.)}
 

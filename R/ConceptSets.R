@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 #
@@ -133,6 +133,9 @@ combineConceptSetsFromCohorts <- function(cohorts) {
       }
     }
   }
+  if (length(conceptSets) == 0) {
+    return(NULL)
+  }
   conceptSets <- dplyr::bind_rows(conceptSets) %>%
     dplyr::arrange(.data$cohortId, .data$conceptSetId)
   
@@ -146,7 +149,6 @@ combineConceptSetsFromCohorts <- function(cohorts) {
     dplyr::distinct() %>% 
     dplyr::relocate(.data$uniqueConceptSetId, .data$cohortId, .data$conceptSetId) %>% 
     dplyr::arrange(.data$uniqueConceptSetId, .data$cohortId, .data$conceptSetId)
-  
   return(conceptSets)
 }
 
@@ -168,6 +170,7 @@ mergeTempTables <- function(connection, tableName, tempTables, oracleTempSchema)
 instantiateUniqueConceptSets <- function(uniqueConceptSets,
                                          connection,
                                          cdmDatabaseSchema,
+                                         vocabularyDatabaseSchema = cdmDatabaseSchema,
                                          oracleTempSchema,
                                          conceptSetsTable = '#inst_concept_sets') {
   ParallelLogger::logInfo("Instantiating concept sets")
@@ -191,7 +194,7 @@ instantiateUniqueConceptSets <- function(uniqueConceptSets,
     sqlSubset <- sql[start:end]
     sqlSubset <- paste(sqlSubset, collapse = "\n\n  UNION ALL\n\n")
     sqlSubset <- sprintf("SELECT *\nINTO %s\nFROM (\n %s\n) tmp;", tempTable, sqlSubset)
-    sqlSubset <- SqlRender::render(sqlSubset, vocabulary_database_schema = cdmDatabaseSchema)
+    sqlSubset <- SqlRender::render(sqlSubset, vocabulary_database_schema = vocabularyDatabaseSchema)
     sqlSubset <- SqlRender::translate(sqlSubset,
                                       targetDialect = connection@dbms,
                                       oracleTempSchema = oracleTempSchema)
@@ -231,6 +234,7 @@ getCodeSetIds <- function(criterionList) {
 runConceptSetDiagnostics <- function(connection,
                                      oracleTempSchema,
                                      cdmDatabaseSchema,
+                                     vocabularyDatabaseSchema = cdmDatabaseSchema,
                                      databaseId,
                                      cohorts,
                                      runIncludedSourceConcepts,
@@ -281,6 +285,11 @@ runConceptSetDiagnostics <- function(connection,
   
   conceptSets <- combineConceptSetsFromCohorts(subset)
   
+  if (is.null(conceptSets)) {
+    ParallelLogger::logInfo("Cohorts being diagnosed does not have concept ids. Skipping concept set diagnostics.")
+    return(NULL)
+  }
+  
   # Save concept set metadata ---------------------------------------
   writeToCsv(data = conceptSets %>%
                dplyr::select(-.data$uniqueConceptSetId),
@@ -294,6 +303,7 @@ runConceptSetDiagnostics <- function(connection,
   instantiateUniqueConceptSets(uniqueConceptSets = uniqueConceptSets,
                                connection = connection,
                                cdmDatabaseSchema = cdmDatabaseSchema,
+                               vocabularyDatabaseSchema = vocabularyDatabaseSchema,
                                oracleTempSchema = oracleTempSchema,
                                conceptSetsTable = "#inst_concept_sets")
   
@@ -502,7 +512,7 @@ runConceptSetDiagnostics <- function(connection,
       runBreakdownIndexEvents <- function(cohort) {
         ParallelLogger::logInfo("- Breaking down index events for cohort '", cohort$cohortName, "'")
         
-        cohortDefinition <- RJSONIO::fromJSON(cohort$json)
+        cohortDefinition <- RJSONIO::fromJSON(cohort$json, digits = 23)
         primaryCodesetIds <- lapply(cohortDefinition$PrimaryCriteria$CriteriaList, getCodeSetIds) %>% 
           dplyr::bind_rows() 
         if (nrow(primaryCodesetIds) == 0) {
@@ -510,7 +520,7 @@ runConceptSetDiagnostics <- function(connection,
           return(tidyr::tibble())
         }
         primaryCodesetIds <- conceptSets %>%
-          dplyr::filter(.data$cohortId == cohort$cohortId) %>%
+          dplyr::filter(.data$cohortId %in% cohort$cohortId) %>%
           dplyr::select(codeSetIds = .data$conceptSetId, .data$uniqueConceptSetId) %>%
           dplyr::inner_join(primaryCodesetIds, by = "codeSetIds")
         
@@ -528,12 +538,15 @@ runConceptSetDiagnostics <- function(connection,
                                                    dbms = connection@dbms,
                                                    oracleTempSchema = oracleTempSchema,
                                                    cdm_database_schema = cdmDatabaseSchema,
+                                                   vocabulary_database_schema = vocabularyDatabaseSchema,
                                                    cohort_database_schema = cohortDatabaseSchema,
                                                    cohort_table = cohortTable,
                                                    cohort_id = cohort$cohortId,
                                                    domain_table = domain$domainTable,
                                                    domain_start_date = domain$domainStartDate,
                                                    domain_concept_id = domain$domainConceptId,
+                                                   domain_source_concept_id = domain$domainSourceConceptId,
+                                                   use_source_concept_id = !is.null(domain$domainSourceConceptId),
                                                    primary_codeset_ids = row$uniqueConceptSetId,
                                                    concept_set_table = "#inst_concept_sets",
                                                    store = TRUE,
@@ -576,6 +589,9 @@ runConceptSetDiagnostics <- function(connection,
         
         if (nrow(counts) > 0) {
           counts$cohortId <- cohort$cohortId
+        } else {
+          ParallelLogger::logInfo("Index event breakdown results were not returned for: ", cohort$cohortId)
+          return(dplyr::tibble())
         }
         return(counts)
       }
@@ -669,15 +685,15 @@ runConceptSetDiagnostics <- function(connection,
       }
       
       writeToCsv(data,
-        file.path(exportFolder, "orphan_concept.csv"),
-        incremental = incremental,
-        cohortId = subsetOrphans$cohortId)
+                 file.path(exportFolder, "orphan_concept.csv"),
+                 incremental = incremental,
+                 cohortId = subsetOrphans$cohortId)
       
       recordTasksDone(cohortId = subsetOrphans$cohortId,
-        task = "runOrphanConcepts",
-        checksum = subsetOrphans$checksum,
-        recordKeepingFile = recordKeepingFile,
-        incremental = incremental)
+                      task = "runOrphanConcepts",
+                      checksum = subsetOrphans$checksum,
+                      recordKeepingFile = recordKeepingFile,
+                      incremental = incremental)
       
       delta <- Sys.time() - start
       ParallelLogger::logInfo("Finding orphan concepts took ", signif(delta, 3), " ", attr(delta, "units"))

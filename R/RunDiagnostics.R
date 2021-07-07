@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -28,6 +28,7 @@
 #' @template Connection
 #'
 #' @template CdmDatabaseSchema
+#' @template VocabularyDatabaseSchema
 #' @template CohortDatabaseSchema
 #' @template OracleTempSchema
 #'
@@ -55,8 +56,8 @@
 #' @param cohortIds                   Optionally, provide a subset of cohort IDs to restrict the
 #'                                    diagnostics to.
 #' @param databaseId                  A short string for identifying the database (e.g. 'Synpuf').
-#' @param databaseName                The full name of the database.
-#' @param databaseDescription         A short description (several sentences) of the database.
+#' @param databaseName                The full name of the database. If NULL, defaults to databaseId.
+#' @param databaseDescription         A short description (several sentences) of the database. If NULL, defaults to databaseId.
 #' @template cdmVersion
 #' @param runInclusionStatistics      Generate and export statistic on the cohort inclusion rules?
 #' @param runIncludedSourceConcepts   Generate and export the source concepts included in the cohorts?
@@ -93,13 +94,14 @@ runCohortDiagnostics <- function(packageName = NULL,
                                  cdmDatabaseSchema,
                                  oracleTempSchema = NULL,
                                  cohortDatabaseSchema,
+                                 vocabularyDatabaseSchema = cdmDatabaseSchema,
                                  cohortTable = "cohort",
                                  cohortIds = NULL,
                                  inclusionStatisticsFolder = file.path(exportFolder, "inclusionStatistics"),
                                  exportFolder,
                                  databaseId,
-                                 databaseName = NULL,
-                                 databaseDescription = NULL,
+                                 databaseName = databaseId,
+                                 databaseDescription = databaseId,
                                  cdmVersion = 5,
                                  runInclusionStatistics = TRUE,
                                  runIncludedSourceConcepts = TRUE,
@@ -125,6 +127,13 @@ runCohortDiagnostics <- function(packageName = NULL,
   
   start <- Sys.time()
   ParallelLogger::logInfo("Run Cohort Diagnostics started at ", start)
+
+  if (is.null(databaseName) | is.na(databaseName)) {
+    databaseName <- databaseId
+  }
+  if (is.null(databaseDescription) | is.na(databaseDescription)) {
+    databaseDescription <- databaseId
+  }
   
   errorMessage <- checkmate::makeAssertCollection()
   checkmate::assertLogical(runInclusionStatistics, add = errorMessage)
@@ -144,10 +153,10 @@ runCohortDiagnostics <- function(packageName = NULL,
           runTimeDistributions, runBreakdownIndexEvents, runIncidenceRate,
           runCohortOverlap, runCohortCharacterization)) {
     checkmate::assertCharacter(x = cdmDatabaseSchema, min.len = 1, add = errorMessage)
+    checkmate::assertCharacter(x = vocabularyDatabaseSchema, min.len = 1, add = errorMessage)
     checkmate::assertCharacter(x = cohortDatabaseSchema, min.len = 1, add = errorMessage)
     checkmate::assertCharacter(x = cohortTable, min.len = 1, add = errorMessage)
     checkmate::assertCharacter(x = databaseId, min.len = 1, add = errorMessage)
-    checkmate::assertCharacter(x = databaseDescription, min.len = 1, add = errorMessage)
   }
   checkmate::reportAssertions(collection = errorMessage)
   
@@ -183,7 +192,74 @@ runCohortDiagnostics <- function(packageName = NULL,
     cohorts <- cohorts %>% 
       dplyr::select(-.data$name)
   }
+  cohortTableColumnNamesObserved <- colnames(cohorts) %>% 
+    sort()
+  cohortTableColumnNamesExpected <- getResultsDataModelSpecifications() %>% 
+    dplyr::filter(.data$tableName == 'cohort') %>% 
+    dplyr::pull(.data$fieldName) %>% 
+    SqlRender::snakeCaseToCamelCase() %>% 
+    sort()
+  cohortTableColumnNamesRequired <- getResultsDataModelSpecifications() %>% 
+    dplyr::filter(.data$tableName == 'cohort') %>% 
+    dplyr::filter(.data$isRequired == 'Yes') %>% 
+    dplyr::pull(.data$fieldName) %>% 
+    SqlRender::snakeCaseToCamelCase() %>% 
+    sort()
+  
+  expectedButNotObsevered <- setdiff(x = cohortTableColumnNamesExpected, y = cohortTableColumnNamesObserved)
+  if (length(expectedButNotObsevered) > 0) {
+    requiredButNotObsevered <- setdiff(x = cohortTableColumnNamesRequired, y = cohortTableColumnNamesObserved)
+  }
+  obseveredButNotExpected <- setdiff(x = cohortTableColumnNamesObserved, y = cohortTableColumnNamesExpected)
+  
+  if (length(requiredButNotObsevered) > 0) {
+    stop(paste("The following required fields not found in cohort table:", 
+               paste0(requiredButNotObsevered, collapse = ", ")))
+  }
+  
+  if ('logicDescription' %in% expectedButNotObsevered) {
+    cohorts$logicDescription <- cohorts$cohortName
+  }
+  if ('phenotypeId' %in% expectedButNotObsevered) {
+    cohorts$phenotypeId <- 0
+  }
+  if ('metadata' %in% expectedButNotObsevered) {
+    if (length(obseveredButNotExpected) > 0) {
+      writeLines(
+        paste(
+          "The following columns were observed in the cohort table, \n
+        that are not expected and will be available as part of json object \n
+        in a newly created 'metadata' column.",
+          paste0(obseveredButNotExpected, collapse = ", ")
+        )
+      )
+    }
+    columnsToAddToJson <-
+      setdiff(x = cohortTableColumnNamesObserved,
+              y = c('json', 'sql')) %>%
+      unique() %>%
+      sort()
+    cohorts <- cohorts %>%
+      dplyr::mutate(metadata = as.list(columnsToAddToJson) %>% RJSONIO::toJSON(digits = 23))
+  } else {
+    if (length(obseveredButNotExpected) > 0) {
+      writeLines(
+        paste(
+          "The following columns were observed in the cohort table, \n
+          that are not expected. If you would like to retain them please \n
+          them as JSON objects in the 'metadata' column.",
+          paste0(obseveredButNotExpected, collapse = ", ")
+        )
+      )
+      stop(paste0("Terminating - please update the metadata column to include: ", 
+                  paste0(obseveredButNotExpected, collapse = ", ")))
+    }
+  }
+  
+  cohorts <- cohorts %>% 
+    dplyr::select(cohortTableColumnNamesExpected)
   writeToCsv(data = cohorts, fileName = file.path(exportFolder, "cohort.csv"))
+  
   if (!"phenotypeId" %in% colnames(cohorts)) {
     cohorts$phenotypeId <- NA
   }
@@ -197,6 +273,28 @@ runCohortDiagnostics <- function(packageName = NULL,
       stop("No connection or connectionDetails provided.")
     }
   }
+  
+  vocabularyVersionCdm <-
+    DatabaseConnector::renderTranslateQuerySql(
+      connection = connection,
+      sql = "select * from @cdm_database_schema.cdm_source;",
+      cdm_database_schema = cdmDatabaseSchema,
+      snakeCaseToCamelCase = TRUE
+    ) %>%
+    dplyr::tibble() %>%
+    dplyr::rename(vocabularyVersionCdm = .data$vocabularyVersion) %>% 
+    dplyr::pull(vocabularyVersionCdm)
+  
+  vocabularyVersion <-
+    DatabaseConnector::renderTranslateQuerySql(
+      connection = connection,
+      sql = "select * from @vocabulary_database_schema.vocabulary where vocabulary_id = 'None';",
+      vocabulary_database_schema = vocabularyDatabaseSchema,
+      snakeCaseToCamelCase = TRUE
+    ) %>%
+    dplyr::tibble() %>%
+    dplyr::rename(vocabularyVersion = .data$vocabularyVersion) %>% 
+    dplyr::pull(.data$vocabularyVersion)
   
   if (incremental) {
     ParallelLogger::logDebug("Working in incremental mode.")
@@ -227,26 +325,36 @@ runCohortDiagnostics <- function(packageName = NULL,
                                            oracleTempSchema = oracleTempSchema,
                                            table_name = "#concept_ids")
   DatabaseConnector::executeSql(connection = connection, sql = sql, progressBar = FALSE, reportOverallTime = FALSE)
-  if (!is.null(phenotypeDescription)) {
-    data <- phenotypeDescription %>% 
-      dplyr::filter(!is.na(.data$referentConceptId)) %>%
-      dplyr::transmute(conceptId = as.integer(.data$referentConceptId)) %>% 
-      dplyr::distinct() %>%
-      as.data.frame() #DatabaseConnector currently does not support tibble
-    if (nrow(data) > 0) {
-      ParallelLogger::logInfo(sprintf("Inserting %s referent concept IDs into the concept ID table. This may take a while.",
-                                      nrow(data)))
-      DatabaseConnector::insertTable(connection = connection, 
-                                     tableName = "#concept_ids",
-                                     data = data,
-                                     dropTableIfExists = FALSE,
-                                     createTable = FALSE, 
-                                     progressBar = TRUE,
-                                     tempTable = TRUE,
-                                     oracleTempSchema = oracleTempSchema,
-                                     camelCaseToSnakeCase = TRUE)
-      ParallelLogger::logTrace("Done inserting")
-    }
+  
+  referentConceptIdToInsert <- dplyr::tibble()
+  # if (!is.null(phenotypeDescription)) {
+  #   referentConceptIdToInsert <- dplyr::bind_rows(referentConceptIdToInsert, phenotypeDescription %>% 
+  #                                                   dplyr::transmute(conceptId = as.double(.data$phenotypeId/1000))) %>%
+  #     dplyr::distinct()
+  # }  # removed because phenotypeId/1000 is not always referentConceptId
+  if ('referentConceptId' %in% colnames(cohorts)) {
+    referentConceptIdToInsert <- dplyr::bind_rows(referentConceptIdToInsert, cohorts %>% 
+                                                    dplyr::transmute(conceptId = as.double(.data$referentConceptId))) %>%
+      dplyr::distinct()
+  }
+  # if ('phenotypeId' %in% colnames(cohorts)) {
+  #   referentConceptIdToInsert <- dplyr::bind_rows(referentConceptIdToInsert, cohorts %>% 
+  #                                                   dplyr::transmute(conceptId = as.double(.data$phenotypeId/1000))) %>%
+  #     dplyr::distinct()
+  # }
+  if (nrow(referentConceptIdToInsert) > 0) {
+    ParallelLogger::logInfo(sprintf("Inserting %s referent concept IDs into the concept ID table. This may take a while.",
+                                    nrow(referentConceptIdToInsert)))
+    DatabaseConnector::insertTable(connection = connection, 
+                                   tableName = "#concept_ids",
+                                   data = referentConceptIdToInsert,
+                                   dropTableIfExists = FALSE,
+                                   createTable = FALSE, 
+                                   progressBar = TRUE,
+                                   tempTable = TRUE,
+                                   oracleTempSchema = oracleTempSchema,
+                                   camelCaseToSnakeCase = TRUE)
+    ParallelLogger::logTrace("Done inserting")
   }
   
   # Counting cohorts -----------------------------------------------------------------------
@@ -325,6 +433,7 @@ runCohortDiagnostics <- function(packageName = NULL,
     runConceptSetDiagnostics(connection = connection,
                              oracleTempSchema = oracleTempSchema,
                              cdmDatabaseSchema = cdmDatabaseSchema,
+                             vocabularyDatabaseSchema = vocabularyDatabaseSchema,
                              databaseId = databaseId,
                              cohorts = cohorts,
                              runIncludedSourceConcepts = runIncludedSourceConcepts,
@@ -436,7 +545,7 @@ runCohortDiagnostics <- function(packageName = NULL,
     if (nrow(subset) > 0) {
       runIncidenceRate <- function(row) {
         ParallelLogger::logInfo("  Computing incidence rate for cohort '", row$cohortName, "'")
-        cohortExpression <- RJSONIO::fromJSON(row$json)
+        cohortExpression <- RJSONIO::fromJSON(row$json, digits = 23)
         washoutPeriod <- tryCatch({
           cohortExpression$PrimaryCriteria$ObservationWindow$PriorDays
         }, error = function(e) {
@@ -683,6 +792,12 @@ runCohortDiagnostics <- function(packageName = NULL,
   ParallelLogger::logInfo("Results are ready for sharing at: ", zipName)
   
   delta <- Sys.time() - start
+  metaData <- dplyr::tibble(databaseId = databaseId,
+                            variableField = c('vocabularyVersionCdm', 'vocabularyVersion'),
+                            valueField = c(vocabularyVersionCdm, vocabularyVersion))
+  writeToCsv(data = metaData,
+             fileName = "metaData.csv")
+  
   ParallelLogger::logInfo("Computing all diagnostics took ", signif(delta, 3), " ", attr(delta, "units"))
 }
 
@@ -710,23 +825,20 @@ loadAndExportPhenotypeDescription <- function(packageName,
     checkmate::assertTibble(x = phenotypeDescription, 
                             any.missing = TRUE, 
                             min.rows = 1, 
-                            min.cols = 6, 
+                            min.cols = 3, 
                             add = errorMessage)
     checkmate::assertNames(x = colnames(phenotypeDescription),
-                           must.include = c("phenotypeId", "phenotypeName",
-                                            "referentConceptId", "clinicalDescription",
-                                            "literatureReview", "phenotypeNotes"),
+                           must.include = c("phenotypeId", "phenotypeName","clinicalDescription"),
                            add = errorMessage)
     checkmate::reportAssertions(collection = errorMessage)
     
     phenotypeDescription <- phenotypeDescription %>% 
+      dplyr::select(.data$phenotypeId, .data$phenotypeName, .data$clinicalDescription) %>% 
       dplyr::mutate(phenotypeName = dplyr::coalesce(as.character(.data$phenotypeName),""),
-                    clinicalDescription = dplyr::coalesce(as.character(.data$clinicalDescription),""),
-                    literatureReview = dplyr::coalesce(as.character(.data$literatureReview),""),
-                    phenotypeNotes = dplyr::coalesce(as.character(.data$phenotypeNotes),"")
+                    clinicalDescription = dplyr::coalesce(as.character(.data$clinicalDescription),"")
       )  
     checkmate::assertTibble(x = phenotypeDescription,
-                            types = c("double", "character"))
+                            types = c("double", "character"), add = errorMessage)
     checkmate::reportAssertions(collection = errorMessage)
     
     ParallelLogger::logInfo(sprintf("Phenotype description file has %s rows. Matching with submitted cohorts", 

@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -20,7 +20,7 @@
 #' @import DatabaseConnector
 #' @importFrom grDevices rgb
 #' @importFrom stats aggregate
-#' @importFrom utils write.csv install.packages menu unzip
+#' @importFrom utils write.csv install.packages menu unzip setTxtProgressBar txtProgressBar
 #' @import dplyr
 #' @importFrom rlang .data
 #' @importFrom methods is

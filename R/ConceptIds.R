@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -47,7 +47,7 @@ exportConceptInformation <- function(connection = NULL,
                                                                  snakeCaseToCamelCase = TRUE,
                                                                  oracleTempSchema = oracleTempSchema)[, 1]
   if (length(uniqueConceptIds) == 0) {
-    warning("No concept IDs found to retrieve information for")
+    warning("No concept IDs in cohorts. No concept information exported.")
     return(NULL)
   }
   

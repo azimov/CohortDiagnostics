@@ -1,4 +1,4 @@
-# Copyright 2020 Observational Health Data Sciences and Informatics
+# Copyright 2021 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortDiagnostics
 # 
@@ -19,6 +19,7 @@ getIncidenceRate <- function(connectionDetails = NULL,
                              cohortDatabaseSchema,
                              cohortTable,
                              cdmDatabaseSchema,
+                             vocabularyDatabaseSchema = cdmDatabaseSchema,
                              cdmVersion = 5,
                              oracleTempSchema = oracleTempSchema,
                              firstOccurrenceOnly = TRUE,
@@ -52,8 +53,8 @@ getIncidenceRate <- function(connectionDetails = NULL,
                                            dbms = connection@dbms,
                                            cdm_database_schema = cdmDatabaseSchema)
   yearRange <- DatabaseConnector::querySql(connection, sql, snakeCaseToCamelCase = TRUE)
-  # Temporarily using data.frame instead of tibble, until DatabaseConnector is fixed (see https://github.com/OHDSI/DatabaseConnector/issues/127)
-  calendarYears <- data.frame(calendarYear = seq(yearRange$startYear, yearRange$endYear, by = 1))
+
+  calendarYears <- dplyr::tibble(calendarYear = seq(yearRange$startYear, yearRange$endYear, by = 1))
   DatabaseConnector::insertTable(connection = connection,
                                  tableName = "#calendar_years",
                                  data = calendarYears,
@@ -70,6 +71,7 @@ getIncidenceRate <- function(connectionDetails = NULL,
                                            cohort_database_schema = cohortDatabaseSchema,
                                            cohort_table = cohortTable,
                                            cdm_database_schema = cdmDatabaseSchema,
+                                           vocabulary_database_schema = vocabularyDatabaseSchema,
                                            first_occurrence_only = firstOccurrenceOnly,
                                            washout_period = washoutPeriod,
                                            cohort_id = cohortId)

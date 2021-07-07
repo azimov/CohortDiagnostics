@@ -1,3 +1,26 @@
+CohortDiagnostics 2.1.0
+=======================
+
+Changes:
+
+1. Diagnostics explorer Shiny app enhancements: 
+- Improved tool tip
+- Various improvements to plots for consistent color, axis labels and labels
+- Visit context table addition
+- Diagnostic explorer is now a distinct shiny application from phenotype library. PhenotypeExplorer is a stand alone shiny app in package PhenotypeLibrarian.
+- Lot of UX changes. Reactivity deferred on drop down menus.
+- Changes to improve app stability.
+2. Index event breakdown now has subject count
+3. Index event breakdown calculates _source_concept_id from source fields in CDM tables.
+4. Vocabulary database schema is now supported.
+5. Metadata (vocabulary version information from data source) is now collected.
+
+Bug fixes:
+
+1. databaseName and databaseDescription should be non NULL
+2. Fixed computation of standard deviation and standard difference of mean for binary covariates.
+
+
 CohortDiagnostics 2.0.0
 =======================
 
@@ -55,6 +78,7 @@ Bug fixes:
 1. Fixed error when many concept sets have to be instantiated.
 2. Removed ohdsi/SqlRender from Remotes https://github.com/OHDSI/CohortDiagnostics/issues/189
 3. Fixed Digit precision for RJSONIO::toJson and fromJSON https://github.com/OHDSI/CohortDiagnostics/issues/161 This is an important fix. If digit precision is not explicitly specified in RJSONIO, then scientific notation is used. This issue seems to only happen when an integer id (conceptId, conceptSetId, cohortId etc) >= 10,000,000 (which is rare). Please use this update if you have id's > 10,000,000.
+
 
 CohortDiagnostics 1.2.2
 =======================
